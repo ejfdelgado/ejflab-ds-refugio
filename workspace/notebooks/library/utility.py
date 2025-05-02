@@ -15,13 +15,18 @@ def get_spark_context():
         .appName("ClientsAnalysis") \
         .getOrCreate()
 
+def write_parquet(name, df):
+    home_dir = os.getenv('HOME_DIR')
+    parquet_file = f'{home_dir}/parkets/{name}.parquet'
+    df.write.mode("overwrite").parquet(parquet_file)
+
 def load_csv_file():
     spark = get_spark_context()
-    # Path to your CSV file
-    csv_file_path = "path/to/your/file.csv"
-
-    # Load CSV into DataFrame
+    csv_file_path = "./data/RESERVAS Y CONSUMO EL REFUGIO HOSTEL Actual.xlsx - HOSPEDAJE & CONSUMO.csv"
     df = spark.read.csv(csv_file_path, header=True, inferSchema=True)
-
-    # Show the first few rows
+    df.printSchema()
     df.show()
+
+    write_parquet("base", df)
+    
+    spark.stop()
