@@ -140,9 +140,15 @@ def parse_dates():
     df = df.where(~((F.col("date_end").isNull()) & ((F.col("nights").isNull()) | (F.col("nights") == 0))))
 
     # Check if exists rows with "nights" but no "date_end"
+    print('If the following table shows rows, consider fix nights from dates...')
     df.select("date_start", "date_end", "nights").where((F.col("date_end").isNull()) & (F.col("nights").isNotNull())).show()
 
-    write_parquet("base_renamed_dates", df)
+    df = df.withColumn("nights2", F.datediff("date_end", "date_start"))
+
+    # In th case "nights" does not match "nights2", belive in "nights" to update "date_end"
+    df.select("nights", "nights2", "date_start", "date_end").where(~(F.col("nights") == F.col("nights2"))).show()
+
+    #write_parquet("base_renamed_dates", df)
 
     spark.stop()
 
