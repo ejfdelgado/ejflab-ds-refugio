@@ -1,0 +1,42 @@
+#docker compose -f docker-compose.yml --profile all down --remove-orphans
+#docker compose -f docker-compose.yml --profile all up -d
+#docker compose -f docker-compose.yml logs -f db
+#docker compose -f docker-compose.yml logs -f pyspark
+#  --force-recreate
+
+networks:
+  network_refugio:
+    name: network_refugio
+    driver: bridge
+    #driver_opts:
+    #  com.docker.network.driver.mtu: 1500
+    #ipam:
+    #  config:
+    #    - subnet: 10.2.0.0/28
+    enable_ipv6: false
+
+volumes:
+  notebooks:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: "${WORKSPACE}/notebooks"
+
+services:
+
+  pyspark:
+    profiles: ["all"]
+    #image: jupyter/pyspark-notebook:python-3.9
+    image: ${JUPITER_IMAGE}
+    restart: always
+    environment:
+      HOME_DIR: "/home/jovyan"
+    volumes:
+      - "notebooks:/home/jovyan"
+    ports:
+      - 8888:8888
+    networks:
+      network_refugio:
+        aliases:
+          - pyspark
