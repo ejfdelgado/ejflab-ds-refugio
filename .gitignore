@@ -208,6 +208,7 @@ workspace/notebooks/.ipython
 workspace/notebooks/.jupyter
 workspace/notebooks/.local
 workspace/notebooks/.npm
+workspace/notebooks/data/
 workspace/notebooks/parkets/
 workspace/notebooks/jsons/
 workspace/notebooks/neural_networks/
