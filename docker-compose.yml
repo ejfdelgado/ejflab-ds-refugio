@@ -1,6 +1,5 @@
 #docker compose -f docker-compose.yml --profile all down --remove-orphans
 #docker compose -f docker-compose.yml --profile all up -d
-#docker compose -f docker-compose.yml logs -f db
 #docker compose -f docker-compose.yml logs -f pyspark
 #  --force-recreate
 
