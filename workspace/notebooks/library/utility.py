@@ -229,7 +229,7 @@ def create_channel_df():
     write_parquet("channels", channel_df)
     spark.stop()
 
-def channel_analysis():
+def channel_normalization():
     spark = get_spark_context()
     df = read_parquet(spark, "base_renamed_dates")
     #df.printSchema()
@@ -247,14 +247,19 @@ def channel_analysis():
 
     df = df.drop("channel")
     df = df.withColumnRenamed("channel2", "channel")
-    
+
+    write_parquet("base_renamed_dates_channel", df)
+
+    spark.stop()
+
+def channel_analysis_1():
+    spark = get_spark_context()
+    df = read_parquet(spark, "base_renamed_dates_channel")
     # Group it
     channel_report = df.groupBy(*["channel"]).agg(
         F.count("*").alias("count")
     ).orderBy(F.desc("count"))
-
     #channel_report.show()
-
     channel_values = channel_report.select("channel").rdd.flatMap(lambda x: x).collect()
     values_general = channel_report.select("count").rdd.flatMap(lambda x: x).collect()
     data = {'Channel': channel_values, 'Count': values_general}
@@ -262,6 +267,20 @@ def channel_analysis():
     plt.xticks(rotation=90)
     plt.title("Overall channel distribution")
     plt.show()
-
     spark.stop()
 
+def channel_analysis_2():
+    spark = get_spark_context()
+    df = read_parquet(spark, "base_renamed_dates_channel")
+
+    x_common = ['2019-01', '2019-02', '2019-03']
+
+    sns.lineplot(x=x_common, y=[2, 4, 6], label='Line A')
+    sns.lineplot(x=x_common, y=[1, 2, 3], label='Line B')
+
+    plt.title("Multiple Lines (Manual Method)")
+    plt.xticks(rotation=90)
+    plt.legend()
+    plt.show()
+
+    spark.stop()
