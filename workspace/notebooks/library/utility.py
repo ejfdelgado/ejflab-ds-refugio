@@ -295,9 +295,27 @@ def explode_data():
     channels_df = read_parquet(spark, "channels")
     #df.printSchema()
     df = df.select(*["date_start", "nights", "channel", "pax", "price"])
+
     # Weird cases, remove it!
     #df.where(F.col("pax").isNull()).show()
     df = df.where(F.col("pax").isNotNull())
+
+    # Weird incomes
+    df = df.withColumn("unit_price", F.round(F.col("price") / (F.col("nights") * F.col("pax")), 0))
+    # Fix if unit_price is above 500000
+    df = df.withColumn(
+    "price2",F.when(
+        (F.col("unit_price") > 500000), 
+        F.col("nights") * F.col("pax") * F.col("unit_price") / 100)
+        .otherwise(F.col("price"))
+    )
+    df = df.drop(*["price"])
+    df = df.withColumnRenamed("price2", "price")
+
+    df = df.drop(*["unit_price"])
+    df = df.withColumn("unit_price", F.round(F.col("price") / (F.col("nights") * F.col("pax")), 0))
+    #df.orderBy(F.desc("unit_price")).show(truncate=False)
+
     time_line_df = read_parquet(spark, "time_line_2")
 
     df = add_year_month_column(df, "date_start")
