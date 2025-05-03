@@ -115,6 +115,11 @@ def parse_spanish_date(date_str):
                 return datetime.datetime.strptime(formatted, "%B %d, %Y").date()
     return None
 
+def fix_end_date(date_start, nights, date_end):
+    if (nights is None):
+        return date_end
+    return date_start + datetime.timedelta(days=nights)
+
 def parse_dates():
     spark = get_spark_context()
     df = read_parquet(spark, "base_renamed")
@@ -138,17 +143,39 @@ def parse_dates():
 
     # Remove rows with date_end null and no nigth information
     df = df.where(~((F.col("date_end").isNull()) & ((F.col("nights").isNull()) | (F.col("nights") == 0))))
+    # Keep only if date_start is not null
+    df = df.where((F.col("date_start").isNotNull()))
 
     # Check if exists rows with "nights" but no "date_end"
-    print('If the following table shows rows, consider fix nights from dates...')
+    # This case was not found in original dataset
+    print('If the following table shows rows, consider fix date_end from nights...')
     df.select("date_start", "date_end", "nights").where((F.col("date_end").isNull()) & (F.col("nights").isNotNull())).show()
 
+    # A mismatch between nights and the difference between date_start and date_end was found
+    # Recompute those mismatch cases from date_start and date_end
+    df = df.withColumn("nights2", F.datediff("date_end", "date_start"))
+    fix_date_end_udf = F.udf(fix_end_date, DateType())
+    df = df.withColumn(
+    "date_end2",F.when(
+        ~(F.col("nights") == F.col("nights2")), 
+        fix_date_end_udf(F.col("date_start"), F.col("nights"), F.col("date_end")))
+        .otherwise(F.col("date_end"))
+    )
+    df = df.drop(*["nights2", "date_end"])
+    df = df.withColumnRenamed("date_end2", "date_end") # Now fixed
     df = df.withColumn("nights2", F.datediff("date_end", "date_start"))
 
-    # In th case "nights" does not match "nights2", belive in "nights" to update "date_end"
-    df.select("nights", "nights2", "date_start", "date_end").where(~(F.col("nights") == F.col("nights2"))).show()
+    # I found nigth with value NULL, so belive nigth2
+    df = df.withColumn("nights3", F.when(
+        F.col("nights").isNull(),
+        F.col("nights2")
+    ).otherwise(F.col("nights")))
+    df = df.drop(*["nights", "nights2"])
+    df = df.withColumnRenamed("nights3", "nights")
 
-    #write_parquet("base_renamed_dates", df)
+    df.select("nights", "date_start", "date_end").show()
+
+    write_parquet("base_renamed_dates", df)
 
     spark.stop()
 
