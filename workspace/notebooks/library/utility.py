@@ -292,20 +292,41 @@ def add_year_month_column(df, date_colum_name):
 def channel_analysis_2():
     spark = get_spark_context()
     df = read_parquet(spark, "base_renamed_dates_channel")
+    channels_df = read_parquet(spark, "channels")
     #df.printSchema()
     df = df.select(*["date_start", "nights", "channel", "pax", "price"])
-    df.show()
+    # Weird cases, remove it!
+    #df.where(F.col("pax").isNull()).show()
+    df = df.where(F.col("pax").isNotNull())
     time_line_df = read_parquet(spark, "time_line_2")
 
     df = add_year_month_column(df, "date_start")
     time_line_df = add_year_month_column(time_line_df, "date")
 
     channel_report = df.groupBy(*["date_start_ym", "channel"]).agg(
-        F.count("*").alias("count")
-    ).orderBy(F.desc("count"))
+        F.count("*").alias("count"),
+        F.sum("pax").alias("pax_sum"),
+        F.sum("price").alias("price_sum"),
+    ).orderBy(F.desc("date_start_ym"))
+    channel_report = channel_report.alias("channel_report")
 
-    channel_report.show()
+    time_line_df = time_line_df.groupBy(*["date_ym"]).agg(F.count("*").alias("count"))
+    time_line_df = time_line_df.drop("count")
+    time_line_df = time_line_df.orderBy(F.desc("date_ym"))
 
+    # make cartesian product of timeline and channels
+    time_channel_product = time_line_df.crossJoin(channels_df)
+    time_channel_product = time_channel_product.alias("time_channel_product")
+    
+    # Join!
+    joined_data = time_channel_product.join(channel_report, (F.col("time_channel_product.date_ym") == F.col("channel_report.date_start_ym")) & (F.col("time_channel_product.channel_id") == F.col("channel_report.channel")), how="left")
+    joined_data = joined_data.drop(*["date_start_ym", "channel"])
+
+    # Fill with zeros
+    joined_data = joined_data.fillna({'count': 0, 'pax_sum': 0, 'price_sum': 0})
+    
+    joined_data.show()
+    
     x_common = ['2019-01', '2019-02', '2019-03']
 
     sns.lineplot(x=x_common, y=[2, 4, 6], label='Line A')
