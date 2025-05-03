@@ -12,6 +12,102 @@ from pyspark.sql.window import Window
 from library.parsers import parse_spanish_date, parse_integer
 from library.base import get_spark_context, write_parquet, load_csv_file, read_parquet
 
+all_channels = {
+    "presencial": [
+        "pasó y vio el letrero, nos buscó en booking y reservó",
+    ],
+    "booking": [
+        "booking.com", 
+        "booking", 
+        "boooking",
+        'booking. solo de tres ver el sistema',
+        ],
+    "genius": [
+        "booking/genius"
+    ],
+    "facebook" : [
+        "facebook",
+        ],
+    "walk_in" : [
+        "walkin",
+        "walking",
+        "walk in",
+        "walk - in",
+        "walk in, instagram",
+        "walk in/ luz",
+        "walk in /luz",
+        "walk in luz",
+        "walk in luzma",
+        ],
+    "instagram" : [
+        "instagram",
+        ],
+    "redes_sociales": [
+        "redes sociales", 
+        "redes",
+        "redes & booking",
+        "booking/redes",
+        ],
+    "google" : [
+        "google",
+        "google maps y green door",
+        ],
+    "amigo" : [
+        "referido lilly",
+        "amigo mao",
+        "amigos",
+        "amigo", 
+        "amiga", 
+        "primo carlos", 
+        "familia carlitos",
+        ],
+    "guaiti": [
+        "referido guaiti",
+    ],
+    "referido" : [
+        "familia",
+        "referido", 
+        "referida", 
+        "referidos",
+        "referidas",
+        "referido de otros húespedes",
+        "referida, cliente frecuente",
+        "referido barichara",
+        "referido papa",
+        "referido aleja hernandez",
+        "referido mamá",
+        "referidos polito",
+        "referidos evento",
+        ],
+    "recurrente" : [
+        "se habia hospedado antes", 
+        'ya se había hospedado',
+        "huesped frecuente",
+        "regreso",
+        "cliente frecuente",
+        "cliente frecuente / redes",
+        ],
+    "stay_over": [
+        "stay over",
+    ],
+    "fortuito": [
+        "evento fortuito",
+        "fortuito",
+    ],
+    "vaolo": [
+        "vaolo",
+        "visita de vaolo",
+    ],
+    "otros": [
+        "voluntarios",
+        "santander weekend",
+        "staff",
+        "parques naturales de colombia",
+        "amigos del agua",
+        "socia",
+    ]
+}
+
 def rename_columns():
     spark = get_spark_context()
     df = read_parquet(spark, "base")
@@ -111,13 +207,44 @@ def parse_dates():
 
     spark.stop()
 
+def normalize_channel(original):
+    if original is not None:
+        original = original.strip().lower()
+
+        for key in all_channels:
+            list = all_channels[key]
+            if (original in list):
+                return key
+    return None
+
 def channel_analysis():
     spark = get_spark_context()
     df = read_parquet(spark, "base_renamed_dates")
     #df.printSchema()
 
-    only_date_start = df.select("date_start")
-    only_date_start.show()
+    # Normalize column
+    channels = [
+        ("booking",),
+    ]
+    normalize_channel_udf = F.udf(normalize_channel, StringType())
+    df = df.withColumn("channel2", normalize_channel_udf(F.col("channel")))
+
+    # This help to build channel classification
+    if True:
+        focus = df.select(*["channel", "channel2"]).where(F.col("channel2").isNull())
+        focus = focus.where(F.col("channel").isNotNull())
+        focus.show(truncate=False)
+        print(focus.count())
+
+    df = df.drop("channel")
+    df = df.withColumnRenamed("channel2", "channel")
+    
+    # Group it
+    channel_report = df.groupBy(*["channel"]).agg(
+        F.count("*").alias("count")
+    ).orderBy(F.desc("count"))
+
+    channel_report.show()
 
     spark.stop()
 
