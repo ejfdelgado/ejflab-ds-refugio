@@ -1,5 +1,4 @@
 import os
-import re
 import datetime
 import pandas as pd
 import pyarrow as pa
@@ -10,44 +9,8 @@ from mysql.connector import Error
 from pyspark.sql import SparkSession
 from pyspark.sql.types import DateType, StringType, BooleanType, ByteType, ShortType, IntegerType, FloatType, DoubleType
 from pyspark.sql.window import Window
-
-month_map = {
-    "enero": "January",
-    "febrero": "February",
-    "marzo": "March",
-    "abril": "April",
-    "mayo": "May",
-    "junio": "June",
-    "julio": "July",
-    "agosto": "August",
-    "septiembre": "September",
-    "octubre": "October",
-    "noviembre": "November",
-    "diciembre": "December"
-}
-
-def get_spark_context():
-    return SparkSession.builder \
-        .appName("ClientsAnalysis") \
-        .getOrCreate()
-
-def write_parquet(name, df):
-    home_dir = os.getenv('HOME_DIR')
-    parquet_file = f'{home_dir}/parkets/{name}.parquet'
-    df.write.mode("overwrite").parquet(parquet_file)
-
-def load_csv_file():
-    spark = get_spark_context()
-    csv_file_path = "./data/RESERVAS Y CONSUMO EL REFUGIO HOSTEL Actual.xlsx - HOSPEDAJE & CONSUMO.csv"
-    df = spark.read.csv(csv_file_path, header=True, inferSchema=True)
-    df.printSchema()
-    df.show()
-    write_parquet("base", df)
-    spark.stop()
-
-def read_parquet(spark, file_name):
-    home_dir = os.getenv('HOME_DIR')
-    return spark.read.parquet(f"{home_dir}/parkets/{file_name}.parquet")
+from library.parsers import parse_spanish_date, parse_integer
+from library.base import get_spark_context, write_parquet, load_csv_file, read_parquet
 
 def rename_columns():
     spark = get_spark_context()
@@ -79,41 +42,8 @@ def rename_columns():
         df = df.withColumnRenamed(key, name_map[key])
 
     df.printSchema()
-
     write_parquet("base_renamed", df)
-
     spark.stop()
-
-def parse_integer(number_str):
-    if number_str is not None:
-        match = re.search(r"^\s*([\d]+)\s*$", number_str)
-        if match:
-            return int(match.group(1))
-    return None
-
-def parse_spanish_date(date_str):
-    if date_str is not None:
-        # Formats:
-        # martes, octubre 08, 2019 - 
-        match1 = re.search(r"^([^,]+),\s*([^\s]+)\s*(\d+),\s*(\d*)$", date_str)
-        if match1:
-            month_day = match1.group(2)
-            month = month_map.get(month_day.lower())
-            day = match1.group(3)
-            year = match1.group(4)
-            formatted = f"{month} {day}, {year}"
-            return datetime.datetime.strptime(formatted, "%B %d, %Y").date()
-        else:
-            # sábado, 28 de diciembre de 2019
-            match2 = re.search(r"^([^,]+),\s*(\d+)\s+de\s+([^\s]+)\s+de\s+([\d]+)$", date_str)
-            if match2:
-                month_day = match2.group(3)
-                month = month_map.get(month_day.lower())
-                day = match2.group(2)
-                year = match2.group(4)
-                formatted = f"{month} {day}, {year}"
-                return datetime.datetime.strptime(formatted, "%B %d, %Y").date()
-    return None
 
 def fix_end_date(date_start, nights, date_end):
     if (nights is None):
