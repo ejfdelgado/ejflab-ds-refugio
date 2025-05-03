@@ -18,9 +18,9 @@ month_map = {
 
 def parse_integer(number_str):
     if number_str is not None:
-        match = re.search(r"^\s*([\d]+)\s*$", number_str)
-        if match:
-            return int(match.group(1))
+        match = ''.join(c for c in number_str if c.isdigit())
+        if len(match) > 0:
+            return int(match)
     return None
 
 def parse_spanish_date(date_str):

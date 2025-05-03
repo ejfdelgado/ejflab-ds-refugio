@@ -248,6 +248,18 @@ def channel_normalization():
     df = df.drop("channel")
     df = df.withColumnRenamed("channel2", "channel")
 
+    # Remove null channels
+    df = df.where((F.col("channel").isNotNull()))
+
+    # Parse numbers
+    number_short_udf = F.udf(parse_integer, ShortType())
+    number_integer_udf = F.udf(parse_integer, IntegerType())
+    df = df.withColumn("pax_p", number_short_udf(df["pax"]))
+    df = df.withColumn("price_p", number_integer_udf(df["price"]))
+    df = df.drop(*["pax", "price"])
+    df = df.withColumnRenamed("pax_p", "pax")
+    df = df.withColumnRenamed("price_p", "price")
+
     write_parquet("base_renamed_dates_channel", df)
 
     spark.stop()
@@ -269,9 +281,30 @@ def channel_analysis_1():
     plt.show()
     spark.stop()
 
+def add_year_month_column(df, date_colum_name):
+    def add_year_month(dt):
+        return f"{dt.year}-{dt.month:02}"
+    
+    add_year_month_udf = F.udf(add_year_month, StringType())
+    df = df.withColumn(f"{date_colum_name}_ym", add_year_month_udf(df[date_colum_name]))
+    return df
+
 def channel_analysis_2():
     spark = get_spark_context()
     df = read_parquet(spark, "base_renamed_dates_channel")
+    #df.printSchema()
+    df = df.select(*["date_start", "nights", "channel", "pax", "price"])
+    df.show()
+    time_line_df = read_parquet(spark, "time_line_2")
+
+    df = add_year_month_column(df, "date_start")
+    time_line_df = add_year_month_column(time_line_df, "date")
+
+    channel_report = df.groupBy(*["date_start_ym", "channel"]).agg(
+        F.count("*").alias("count")
+    ).orderBy(F.desc("count"))
+
+    channel_report.show()
 
     x_common = ['2019-01', '2019-02', '2019-03']
 
