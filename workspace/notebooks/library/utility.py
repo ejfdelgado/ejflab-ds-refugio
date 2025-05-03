@@ -289,7 +289,7 @@ def add_year_month_column(df, date_colum_name):
     df = df.withColumn(f"{date_colum_name}_ym", add_year_month_udf(df[date_colum_name]))
     return df
 
-def channel_analysis_2():
+def explode_data():
     spark = get_spark_context()
     df = read_parquet(spark, "base_renamed_dates_channel")
     channels_df = read_parquet(spark, "channels")
@@ -324,15 +324,36 @@ def channel_analysis_2():
 
     # Fill with zeros
     joined_data = joined_data.fillna({'count': 0, 'pax_sum': 0, 'price_sum': 0})
-    
+
     joined_data.show()
+
+    write_parquet("exploded", joined_data)
     
-    x_common = ['2019-01', '2019-02', '2019-03']
+def channel_analysis_2(custom_channels):
+    spark = get_spark_context()
+    df = read_parquet(spark, "exploded")
 
-    sns.lineplot(x=x_common, y=[2, 4, 6], label='Line A')
-    sns.lineplot(x=x_common, y=[1, 2, 3], label='Line B')
+    # Channel behavior through time
+    df = df.groupBy(*["date_ym", "channel_id"]).agg(
+        F.sum("count").alias("group_count"),
+        F.sum("pax_sum").alias("pax_sum"),
+        F.sum("price_sum").alias("price_sum"),
+    )
 
-    plt.title("Multiple Lines (Manual Method)")
+    #df.show()
+    
+    x_common = df.select("date_ym").distinct().orderBy(F.asc("date_ym")).rdd.flatMap(lambda x: x).collect()
+    focus_column = "group_count"
+
+    plt.figure(figsize=(30, 6))
+
+    for channel_id in all_channels:
+        if (channel_id in custom_channels):
+            simplified = df.where(F.col("channel_id") == channel_id).select(*["date_ym", focus_column]).orderBy(F.asc("date_ym"))
+            y_values = simplified.select(focus_column).rdd.flatMap(lambda x: x).collect()
+            sns.lineplot(x=x_common, y=y_values, label=channel_id)
+
+    plt.title("Reservations per channel")
     plt.xticks(rotation=90)
     plt.legend()
     plt.show()
