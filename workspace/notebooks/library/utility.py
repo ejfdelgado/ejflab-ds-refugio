@@ -12,6 +12,9 @@ from pyspark.sql.window import Window
 from library.parsers import parse_spanish_date, parse_integer
 from library.base import get_spark_context, write_parquet, load_csv_file, read_parquet
 
+import seaborn as sns
+import matplotlib.pyplot as plt
+
 all_channels = {
     "presencial": [
         "pasó y vio el letrero, nos buscó en booking y reservó",
@@ -230,7 +233,7 @@ def channel_analysis():
     df = df.withColumn("channel2", normalize_channel_udf(F.col("channel")))
 
     # This help to build channel classification
-    if True:
+    if False:
         focus = df.select(*["channel", "channel2"]).where(F.col("channel2").isNull())
         focus = focus.where(F.col("channel").isNotNull())
         focus.show(truncate=False)
@@ -244,7 +247,16 @@ def channel_analysis():
         F.count("*").alias("count")
     ).orderBy(F.desc("count"))
 
-    channel_report.show()
+    #channel_report.show()
+
+    channel_values = channel_report.select("channel").rdd.flatMap(lambda x: x).collect()
+    values_general = channel_report.select("count").rdd.flatMap(lambda x: x).collect()
+
+    data = {'Channel': channel_values, 'Count': values_general}
+    sns.barplot(x='Channel', y='Count', data=data)
+    plt.xticks(rotation=90)
+    plt.title("Overall channel distribution")
+    plt.show()
 
     spark.stop()
 
