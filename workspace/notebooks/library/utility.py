@@ -173,6 +173,8 @@ def parse_dates():
     df = df.drop(*["nights", "nights2"])
     df = df.withColumnRenamed("nights3", "nights")
 
+    df = df.orderBy(F.asc("date_start"))
+
     df.select("nights", "date_start", "date_end").show()
 
     write_parquet("base_renamed_dates", df)
