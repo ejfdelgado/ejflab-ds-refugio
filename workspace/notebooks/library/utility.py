@@ -329,9 +329,12 @@ def explode_data():
 
     write_parquet("exploded", joined_data)
     
-def channel_analysis_2(custom_channels):
+def channel_analysis_2(custom_channels, focus_column, title):
     spark = get_spark_context()
     df = read_parquet(spark, "exploded")
+
+    # Filter post pandemic results
+    df = df.where((F.col("date_ym") >= "2020-09") & (F.col("date_ym") < "2025-03"))
 
     # Channel behavior through time
     df = df.groupBy(*["date_ym", "channel_id"]).agg(
@@ -343,17 +346,23 @@ def channel_analysis_2(custom_channels):
     #df.show()
     
     x_common = df.select("date_ym").distinct().orderBy(F.asc("date_ym")).rdd.flatMap(lambda x: x).collect()
-    focus_column = "group_count"
 
-    plt.figure(figsize=(30, 6))
-
+    plt.figure(figsize=(20, 6))
+    sum_plot = None
     for channel_id in all_channels:
         if (channel_id in custom_channels):
             simplified = df.where(F.col("channel_id") == channel_id).select(*["date_ym", focus_column]).orderBy(F.asc("date_ym"))
             y_values = simplified.select(focus_column).rdd.flatMap(lambda x: x).collect()
+            if (sum_plot is None):
+                sum_plot = y_values
+            else:
+                for index, value in enumerate(y_values):
+                    sum_plot[index] += value
             sns.lineplot(x=x_common, y=y_values, label=channel_id)
 
-    plt.title("Reservations per channel")
+    sns.lineplot(x=x_common, y=sum_plot, label="sum")
+
+    plt.title(title)
     plt.xticks(rotation=90)
     plt.legend()
     plt.show()
