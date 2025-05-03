@@ -220,15 +220,21 @@ def normalize_channel(original):
                 return key
     return None
 
+def create_channel_df():
+    spark = get_spark_context()
+    channels_data = []
+    for key in all_channels:
+        channels_data.append((key,),)
+    channel_df = spark.createDataFrame(channels_data, ["channel_id"])
+    write_parquet("channels", channel_df)
+    spark.stop()
+
 def channel_analysis():
     spark = get_spark_context()
     df = read_parquet(spark, "base_renamed_dates")
     #df.printSchema()
 
     # Normalize column
-    channels = [
-        ("booking",),
-    ]
     normalize_channel_udf = F.udf(normalize_channel, StringType())
     df = df.withColumn("channel2", normalize_channel_udf(F.col("channel")))
 
@@ -251,7 +257,6 @@ def channel_analysis():
 
     channel_values = channel_report.select("channel").rdd.flatMap(lambda x: x).collect()
     values_general = channel_report.select("count").rdd.flatMap(lambda x: x).collect()
-
     data = {'Channel': channel_values, 'Count': values_general}
     sns.barplot(x='Channel', y='Count', data=data)
     plt.xticks(rotation=90)
