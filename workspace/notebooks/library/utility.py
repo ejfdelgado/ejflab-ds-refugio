@@ -316,6 +316,10 @@ def explode_data():
     df = df.withColumn("couple", F.when(F.col("pax") == 2, 1).otherwise(0))
     df = df.withColumn("group", F.when(F.col("pax") > 2, 1).otherwise(0))
 
+    df = df.withColumn("single_inc", F.when(F.col("pax") == 1, F.col("price")).otherwise(0))
+    df = df.withColumn("couple_inc", F.when(F.col("pax") == 2, F.col("price")).otherwise(0))
+    df = df.withColumn("group_inc", F.when(F.col("pax") > 2, F.col("price")).otherwise(0))
+
     channel_report = df.groupBy(*["date_start_ym", "channel"]).agg(
         F.count("*").alias("count"),
         F.sum("pax").alias("pax_sum"),
@@ -323,6 +327,9 @@ def explode_data():
         F.sum("single").alias("single_sum"),
         F.sum("couple").alias("couple_sum"),
         F.sum("group").alias("group_sum"),
+        F.sum("single_inc").alias("single_inc_sum"),
+        F.sum("couple_inc").alias("couple_inc_sum"),
+        F.sum("group_inc").alias("group_inc_sum"),
         F.sum("price").alias("price_sum"),
     ).orderBy(F.desc("date_start_ym"))
     channel_report = channel_report.alias("channel_report")
@@ -359,6 +366,9 @@ def explode_data():
         'single_sum': 0,
         'couple_sum': 0,
         'group_sum': 0,
+        'single_inc_sum': 0,
+        'couple_inc_sum': 0,
+        'group_inc_sum': 0,
         'single_per': 0,
         'couple_per': 0,
         'group_per': 0,
@@ -436,10 +446,6 @@ def channel_analysis_3(start_date="2020-09", end_date="2025-03"):
     # Sample data
     categories = ['single_per', 'couple_per', 'group_per']
 
-    value1 = [10, 15, 20]
-    value2 = [5, 7, 10]
-    value3 = [3, 9, 6]
-
     # Bar width and x locations
     x = df.select("date_ym").distinct().orderBy(F.asc("date_ym")).rdd.flatMap(lambda x: x).collect()
 
@@ -462,6 +468,59 @@ def channel_analysis_3(start_date="2020-09", end_date="2025-03"):
 
     # Labels and legend
     plt.title("Client profiles")
+    plt.xticks(rotation=90)
+    plt.legend()
+    plt.show()
+    
+
+    spark.stop()
+
+def channel_analysis_4(start_date="2020-09", end_date="2025-03"):
+    spark = get_spark_context()
+    df = read_parquet(spark, "exploded")
+
+    # Filter post pandemic results
+    df = df.where((F.col("date_ym") >= start_date) & (F.col("date_ym") < end_date))
+
+    df = df.groupBy(*["date_ym"]).agg(
+        F.sum("single_inc_sum").alias("single_sum"),
+        F.sum("couple_inc_sum").alias("couple_sum"),
+        F.sum("group_inc_sum").alias("group_sum"),
+    )
+    df = df.withColumn("count", F.col("single_sum") + F.col("couple_sum") + F.col("group_sum"))
+    df = df.withColumn("single_per", F.when(F.col("count") > 0,F.col("single_sum") / F.col("count")).otherwise(0))
+    df = df.withColumn("couple_per", F.when(F.col("count") > 0,F.col("couple_sum") / F.col("count")).otherwise(0))
+    df = df.withColumn("group_per", F.when(F.col("count") > 0,F.col("group_sum") / F.col("count")).otherwise(0))
+
+    #df.show()
+
+    # Start ploting...
+
+    # Sample data
+    categories = ['single_per', 'couple_per', 'group_per']
+
+    # Bar width and x locations
+    x = df.select("date_ym").distinct().orderBy(F.asc("date_ym")).rdd.flatMap(lambda x: x).collect()
+
+    plt.figure(figsize=(20, 6))
+
+    col = categories[0]
+    simplified_single = df.select(*["date_ym", col]).orderBy(F.asc("date_ym"))
+    value1 = simplified_single.select(col).rdd.flatMap(lambda x: x).collect()
+    plt.bar(x, value1, label=col)
+
+    col = categories[1]
+    simplified_single = df.select(*["date_ym", col]).orderBy(F.asc("date_ym"))
+    value2 = simplified_single.select(col).rdd.flatMap(lambda x: x).collect()
+    plt.bar(x, value2, bottom=value1, label=col)
+
+    col = categories[2]
+    simplified_single = df.select(*["date_ym", col]).orderBy(F.asc("date_ym"))
+    value3 = simplified_single.select(col).rdd.flatMap(lambda x: x).collect()
+    plt.bar(x, value3, bottom=np.array(value1)+np.array(value2), label=col)
+
+    # Labels and legend
+    plt.title("Client profiles income")
     plt.xticks(rotation=90)
     plt.legend()
     plt.show()
