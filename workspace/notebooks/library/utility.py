@@ -2,6 +2,7 @@ import os
 import datetime
 import pandas as pd
 import pyarrow as pa
+import numpy as np
 import mysql.connector
 import pyarrow.parquet as pq
 import pyspark.sql.functions as F
@@ -299,6 +300,8 @@ def explode_data():
     # Weird cases, remove it!
     #df.where(F.col("pax").isNull()).show()
     df = df.where(F.col("pax").isNotNull())
+    # It exists some reservations with zero persons
+    df = df.where(F.col("pax") > 0)
 
     df = df.withColumn("unit_price", F.round(F.col("price") / (F.col("nights") * F.col("pax")), 0))
     #df.orderBy(F.desc("unit_price")).show(truncate=False)
@@ -329,6 +332,11 @@ def explode_data():
     channel_report = channel_report.withColumn("single_per", F.when(F.col("count") > 0,F.col("single_sum") / F.col("count")).otherwise(0))
     channel_report = channel_report.withColumn("couple_per", F.when(F.col("count") > 0,F.col("couple_sum") / F.col("count")).otherwise(0))
     channel_report = channel_report.withColumn("group_per", F.when(F.col("count") > 0,F.col("group_sum") / F.col("count")).otherwise(0))
+
+    # Check if create a count 2 it differs
+    channel_report = channel_report.withColumn("count2", F.col("single_sum") + F.col("couple_sum") + F.col("group_sum"))
+    channel_report.where(~(F.col("count2") == F.col("count"))).show()
+    channel_report = channel_report.drop("count2")
 
     time_line_df = time_line_df.groupBy(*["date_ym"]).agg(F.count("*").alias("count"))
     time_line_df = time_line_df.drop("count")
@@ -410,30 +418,53 @@ def channel_analysis_3(start_date="2020-09", end_date="2025-03"):
     df = df.where((F.col("date_ym") >= start_date) & (F.col("date_ym") < end_date))
 
     df = df.groupBy(*["date_ym"]).agg(
-        #F.sum("count").alias("count"),
+        F.sum("count").alias("count"), # Here it is supposed to be equal BUT NOT!!! panic
         F.sum("single_sum").alias("single_sum"),
         F.sum("couple_sum").alias("couple_sum"),
         F.sum("group_sum").alias("group_sum"),
     )
-    df = df.withColumn("count", F.col("single_sum") + F.col("couple_sum") + F.col("group_sum"))
+    # Panic here!
+    #df = df.withColumn("count", F.col("single_sum") + F.col("couple_sum") + F.col("group_sum"))
+
     df = df.withColumn("single_per", F.when(F.col("count") > 0,100*F.col("single_sum") / F.col("count")).otherwise(0))
     df = df.withColumn("couple_per", F.when(F.col("count") > 0,100*F.col("couple_sum") / F.col("count")).otherwise(0))
     df = df.withColumn("group_per", F.when(F.col("count") > 0,100*F.col("group_sum") / F.col("count")).otherwise(0))
+    #df.show()
 
-    x_common = df.select("date_ym").distinct().orderBy(F.asc("date_ym")).rdd.flatMap(lambda x: x).collect()
+    # Start ploting...
+
+    # Sample data
+    categories = ['single_per', 'couple_per', 'group_per']
+
+    value1 = [10, 15, 20]
+    value2 = [5, 7, 10]
+    value3 = [3, 9, 6]
+
+    # Bar width and x locations
+    x = df.select("date_ym").distinct().orderBy(F.asc("date_ym")).rdd.flatMap(lambda x: x).collect()
+
     plt.figure(figsize=(20, 6))
 
-    columns = ["single_per", "couple_per", "group_per"]
-    for col in columns:
-        simplified_single = df.select(*["date_ym", col]).orderBy(F.asc("date_ym"))
-        y_values_single = simplified_single.select(col).rdd.flatMap(lambda x: x).collect()
-        sns.lineplot(x=x_common, y=y_values_single, label=col)
+    col = categories[0]
+    simplified_single = df.select(*["date_ym", col]).orderBy(F.asc("date_ym"))
+    value1 = simplified_single.select(col).rdd.flatMap(lambda x: x).collect()
+    plt.bar(x, value1, label=col)
 
+    col = categories[1]
+    simplified_single = df.select(*["date_ym", col]).orderBy(F.asc("date_ym"))
+    value2 = simplified_single.select(col).rdd.flatMap(lambda x: x).collect()
+    plt.bar(x, value2, bottom=value1, label=col)
+
+    col = categories[2]
+    simplified_single = df.select(*["date_ym", col]).orderBy(F.asc("date_ym"))
+    value3 = simplified_single.select(col).rdd.flatMap(lambda x: x).collect()
+    plt.bar(x, value3, bottom=np.array(value1)+np.array(value2), label=col)
+
+    # Labels and legend
     plt.title("Client profiles")
     plt.xticks(rotation=90)
     plt.legend()
     plt.show()
-
-    df.show()
+    
 
     spark.stop()
