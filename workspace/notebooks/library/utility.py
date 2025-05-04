@@ -308,12 +308,27 @@ def explode_data():
     df = add_year_month_column(df, "date_start")
     time_line_df = add_year_month_column(time_line_df, "date")
 
+    # classify
+    df = df.withColumn("single", F.when(F.col("pax") == 1, 1).otherwise(0))
+    df = df.withColumn("couple", F.when(F.col("pax") == 2, 1).otherwise(0))
+    df = df.withColumn("group", F.when(F.col("pax") > 2, 1).otherwise(0))
+
     channel_report = df.groupBy(*["date_start_ym", "channel"]).agg(
         F.count("*").alias("count"),
         F.sum("pax").alias("pax_sum"),
+        F.avg("pax").alias("pax_avg"),
+        F.sum("single").alias("single_sum"),
+        F.sum("couple").alias("couple_sum"),
+        F.sum("group").alias("group_sum"),
         F.sum("price").alias("price_sum"),
     ).orderBy(F.desc("date_start_ym"))
     channel_report = channel_report.alias("channel_report")
+
+    # Compute classification percentage
+    
+    channel_report = channel_report.withColumn("single_per", F.when(F.col("count") > 0,F.col("single_sum") / F.col("count")).otherwise(0))
+    channel_report = channel_report.withColumn("couple_per", F.when(F.col("count") > 0,F.col("couple_sum") / F.col("count")).otherwise(0))
+    channel_report = channel_report.withColumn("group_per", F.when(F.col("count") > 0,F.col("group_sum") / F.col("count")).otherwise(0))
 
     time_line_df = time_line_df.groupBy(*["date_ym"]).agg(F.count("*").alias("count"))
     time_line_df = time_line_df.drop("count")
@@ -328,7 +343,18 @@ def explode_data():
     joined_data = joined_data.drop(*["date_start_ym", "channel"])
 
     # Fill with zeros
-    joined_data = joined_data.fillna({'count': 0, 'pax_sum': 0, 'price_sum': 0})
+    joined_data = joined_data.fillna({
+        'count': 0, 
+        'pax_sum': 0, 
+        'pax_avg': 0, 
+        'price_sum': 0,
+        'single_sum': 0,
+        'couple_sum': 0,
+        'group_sum': 0,
+        'single_per': 0,
+        'couple_per': 0,
+        'group_per': 0,
+        })
 
     joined_data.show()
 
@@ -344,7 +370,7 @@ def channel_analysis_2(custom_channels, focus_column, title, start_date="2020-09
     # Channel behavior through time
     df = df.groupBy(*["date_ym", "channel_id"]).agg(
         F.sum("count").alias("group_count"),
-        F.sum("pax_sum").alias("pax_sum"),
+        F.sum("pax_avg").alias("pax_avg"),
         F.sum("price_sum").alias("price_sum"),
     )
 
@@ -366,7 +392,8 @@ def channel_analysis_2(custom_channels, focus_column, title, start_date="2020-09
         if (channel_id in custom_channels):
             sns.lineplot(x=x_common, y=y_values, label=channel_id)
 
-    sns.lineplot(x=x_common, y=sum_plot, label="sum")
+    if not (focus_column in ["pax_avg"]):
+        sns.lineplot(x=x_common, y=sum_plot, label="sum")
 
     plt.title(title)
     plt.xticks(rotation=90)
