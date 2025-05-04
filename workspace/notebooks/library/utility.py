@@ -300,19 +300,6 @@ def explode_data():
     #df.where(F.col("pax").isNull()).show()
     df = df.where(F.col("pax").isNotNull())
 
-    # Weird incomes
-    df = df.withColumn("unit_price", F.round(F.col("price") / (F.col("nights") * F.col("pax")), 0))
-    # Fix if unit_price is above 500000
-    df = df.withColumn(
-    "price2",F.when(
-        (F.col("unit_price") > 500000), 
-        F.col("nights") * F.col("pax") * F.col("unit_price") / 100)
-        .otherwise(F.col("price"))
-    )
-    df = df.drop(*["price"])
-    df = df.withColumnRenamed("price2", "price")
-
-    df = df.drop(*["unit_price"])
     df = df.withColumn("unit_price", F.round(F.col("price") / (F.col("nights") * F.col("pax")), 0))
     #df.orderBy(F.desc("unit_price")).show(truncate=False)
 
@@ -347,12 +334,12 @@ def explode_data():
 
     write_parquet("exploded", joined_data)
     
-def channel_analysis_2(custom_channels, focus_column, title):
+def channel_analysis_2(custom_channels, focus_column, title, start_date="2020-09", end_date="2025-03"):
     spark = get_spark_context()
     df = read_parquet(spark, "exploded")
 
     # Filter post pandemic results
-    df = df.where((F.col("date_ym") >= "2020-09") & (F.col("date_ym") < "2025-03"))
+    df = df.where((F.col("date_ym") >= start_date) & (F.col("date_ym") < end_date))
 
     # Channel behavior through time
     df = df.groupBy(*["date_ym", "channel_id"]).agg(
@@ -368,14 +355,15 @@ def channel_analysis_2(custom_channels, focus_column, title):
     plt.figure(figsize=(20, 6))
     sum_plot = None
     for channel_id in all_channels:
+    
+        simplified = df.where(F.col("channel_id") == channel_id).select(*["date_ym", focus_column]).orderBy(F.asc("date_ym"))
+        y_values = simplified.select(focus_column).rdd.flatMap(lambda x: x).collect()
+        if (sum_plot is None):
+            sum_plot = y_values
+        else:
+            for index, value in enumerate(y_values):
+                sum_plot[index] += value
         if (channel_id in custom_channels):
-            simplified = df.where(F.col("channel_id") == channel_id).select(*["date_ym", focus_column]).orderBy(F.asc("date_ym"))
-            y_values = simplified.select(focus_column).rdd.flatMap(lambda x: x).collect()
-            if (sum_plot is None):
-                sum_plot = y_values
-            else:
-                for index, value in enumerate(y_values):
-                    sum_plot[index] += value
             sns.lineplot(x=x_common, y=y_values, label=channel_id)
 
     sns.lineplot(x=x_common, y=sum_plot, label="sum")

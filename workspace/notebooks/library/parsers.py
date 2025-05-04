@@ -18,7 +18,14 @@ month_map = {
 
 def parse_integer(number_str):
     if number_str is not None:
-        match = ''.join(c for c in number_str if c.isdigit())
+        arreglo = []
+        for c in number_str:
+            if c.isdigit():
+                arreglo.append(c)
+            elif c == ",":
+                # decimals not allowed
+                break
+        match = ''.join(arreglo)
         if len(match) > 0:
             return int(match)
     return None
