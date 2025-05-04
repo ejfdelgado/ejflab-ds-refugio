@@ -401,3 +401,39 @@ def channel_analysis_2(custom_channels, focus_column, title, start_date="2020-09
     plt.show()
 
     spark.stop()
+
+def channel_analysis_3(start_date="2020-09", end_date="2025-03"):
+    spark = get_spark_context()
+    df = read_parquet(spark, "exploded")
+
+    # Filter post pandemic results
+    df = df.where((F.col("date_ym") >= start_date) & (F.col("date_ym") < end_date))
+
+    df = df.groupBy(*["date_ym"]).agg(
+        #F.sum("count").alias("count"),
+        F.sum("single_sum").alias("single_sum"),
+        F.sum("couple_sum").alias("couple_sum"),
+        F.sum("group_sum").alias("group_sum"),
+    )
+    df = df.withColumn("count", F.col("single_sum") + F.col("couple_sum") + F.col("group_sum"))
+    df = df.withColumn("single_per", F.when(F.col("count") > 0,100*F.col("single_sum") / F.col("count")).otherwise(0))
+    df = df.withColumn("couple_per", F.when(F.col("count") > 0,100*F.col("couple_sum") / F.col("count")).otherwise(0))
+    df = df.withColumn("group_per", F.when(F.col("count") > 0,100*F.col("group_sum") / F.col("count")).otherwise(0))
+
+    x_common = df.select("date_ym").distinct().orderBy(F.asc("date_ym")).rdd.flatMap(lambda x: x).collect()
+    plt.figure(figsize=(20, 6))
+
+    columns = ["single_per", "couple_per", "group_per"]
+    for col in columns:
+        simplified_single = df.select(*["date_ym", col]).orderBy(F.asc("date_ym"))
+        y_values_single = simplified_single.select(col).rdd.flatMap(lambda x: x).collect()
+        sns.lineplot(x=x_common, y=y_values_single, label=col)
+
+    plt.title("Client profiles")
+    plt.xticks(rotation=90)
+    plt.legend()
+    plt.show()
+
+    df.show()
+
+    spark.stop()
