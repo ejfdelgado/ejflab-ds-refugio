@@ -13,6 +13,7 @@ from pyspark.sql.types import DateType, StringType, BooleanType, ByteType, Short
 from pyspark.sql.window import Window
 from library.parsers import parse_spanish_date, parse_integer
 from library.base import get_spark_context, write_parquet, load_csv_file, read_parquet
+from matplotlib.ticker import FuncFormatter
 
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -489,9 +490,9 @@ def channel_analysis_4(start_date="2020-09", end_date="2025-03"):
         F.sum("group_inc_sum").alias("group_sum"),
     )
     df = df.withColumn("count", F.col("single_sum") + F.col("couple_sum") + F.col("group_sum"))
-    df = df.withColumn("single_per", F.when(F.col("count") > 0,F.col("single_sum") / F.col("count")).otherwise(0))
-    df = df.withColumn("couple_per", F.when(F.col("count") > 0,F.col("couple_sum") / F.col("count")).otherwise(0))
-    df = df.withColumn("group_per", F.when(F.col("count") > 0,F.col("group_sum") / F.col("count")).otherwise(0))
+    df = df.withColumn("single_per", F.when(F.col("count") > 0, 100*F.col("single_sum") / F.col("count")).otherwise(0))
+    df = df.withColumn("couple_per", F.when(F.col("count") > 0, 100*F.col("couple_sum") / F.col("count")).otherwise(0))
+    df = df.withColumn("group_per", F.when(F.col("count") > 0, 100*F.col("group_sum") / F.col("count")).otherwise(0))
 
     #df.show()
 
@@ -560,7 +561,7 @@ def channel_analysis_5(start_date="2020-09", end_date="2025-03"):
         "08": "August",
         "09": "September",
         "10": "October",
-        "11": "Nobember",
+        "11": "November",
         "12": "December",
     }
     def get_only_month(ym_text):
@@ -584,7 +585,7 @@ def channel_analysis_5(start_date="2020-09", end_date="2025-03"):
     compute_standar_deviation_udf = F.udf(compute_standar_deviation, FloatType())
 
     groups = [
-        {"name": "single", "ds_avg_ratio": 1}, 
+        {"name": "single", "ds_avg_ratio": 0.7}, 
         {"name": "couple", "ds_avg_ratio": 0.2}, 
         {"name": "group", "ds_avg_ratio": 0.2}, 
         ]
@@ -593,7 +594,37 @@ def channel_analysis_5(start_date="2020-09", end_date="2025-03"):
         group = group_item["name"]
         ds_avg_ratio = group_item["ds_avg_ratio"]
         df = df.withColumn(f"{group}_ds", compute_standar_deviation_udf(F.col(f"{group}_var")))
-        df.select(*["month", f"{group}_ds", f"{group}_avg"]).where(F.col(f"{group}_ds") < ds_avg_ratio*F.col(f"{group}_avg")).orderBy(F.asc("month")).show()
-    
+        df_show_all = df.select(*["month", f"{group}_ds", f"{group}_avg"])
+        df_show_main = df_show_all.where(F.col(f"{group}_ds") <= ds_avg_ratio*F.col(f"{group}_avg"))
+        df_show_all = df_show_all.orderBy(F.asc("month"))
+        df_show_main = df_show_main.orderBy(F.asc("month"))
+
+        def just_plot(df_show, filtered):
+            average_values = df_show.select(f"{group}_avg").rdd.flatMap(lambda x: x).collect()
+            values_general = df_show.select("month").rdd.flatMap(lambda x: x).collect()
+            standar_deviation = df_show.select(f"{group}_ds").rdd.flatMap(lambda x: x).collect()
+            data = {'Average': average_values, 'Month': values_general, 'std': standar_deviation}
+            ax = sns.barplot(x='Month', y='Average', data=data)
+            if filtered:
+                ax.errorbar(x=data["Month"], y=data["Average"], 
+                            yerr=data["std"],
+                            fmt="none",  # Don't show markers
+                            color="black",
+                            capsize=5)  # Cap width
+            def format_month_label(monvalue):
+                #return f"{monvalue} {tick_numberth}"
+                return MONTH_MAP[monvalue]
+            current_ticks = ax.get_xticks()  # Get numeric positions
+            ax.set_xticks(current_ticks)
+            ax.set_xticklabels([format_month_label(label.get_text()) for label in ax.get_xticklabels()])
+            plt.xticks(rotation=90)
+            if filtered:
+                plt.title(f"Estationary tendencies ({group} with DS <= {100*ds_avg_ratio}% AVG)")
+            else:
+                plt.title(f"Estationary tendencies ({group})")
+            plt.show()
+
+        just_plot(df_show_all, False)
+        just_plot(df_show_main, True)
 
     spark.stop()
