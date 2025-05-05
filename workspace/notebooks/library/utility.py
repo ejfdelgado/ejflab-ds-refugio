@@ -1,4 +1,5 @@
 import os
+import math
 import datetime
 import pandas as pd
 import pyarrow as pa
@@ -524,6 +525,75 @@ def channel_analysis_4(start_date="2020-09", end_date="2025-03"):
     plt.xticks(rotation=90)
     plt.legend()
     plt.show()
+    
+
+    spark.stop()
+
+def channel_analysis_5(start_date="2020-09", end_date="2025-03"):
+    spark = get_spark_context()
+    df = read_parquet(spark, "exploded")
+
+    # Filter post pandemic results
+    df = df.where((F.col("date_ym") >= start_date) & (F.col("date_ym") < end_date))
+
+    df = df.groupBy(*["date_ym"]).agg(
+        F.sum("count").alias("count"),
+        F.sum("single_sum").alias("single_sum"),
+        F.sum("couple_sum").alias("couple_sum"),
+        F.sum("group_sum").alias("group_sum"),
+    )
+
+    df = df.withColumn("single_per", F.when(F.col("count") > 0,100*F.col("single_sum") / F.col("count")).otherwise(0))
+    df = df.withColumn("couple_per", F.when(F.col("count") > 0,100*F.col("couple_sum") / F.col("count")).otherwise(0))
+    df = df.withColumn("group_per", F.when(F.col("count") > 0,100*F.col("group_sum") / F.col("count")).otherwise(0))
+
+    # Stationary analysis by month
+    # Add column for month only
+    MONTH_MAP = {
+        "01": "January",
+        "02": "February",
+        "03": "March",
+        "04": "April",
+        "05": "May",
+        "06": "June",
+        "07": "July",
+        "08": "August",
+        "09": "September",
+        "10": "October",
+        "11": "Nobember",
+        "12": "December",
+    }
+    def get_only_month(ym_text):
+        # 2025-01
+        return ym_text[5:]
+    get_only_month_udf = F.udf(get_only_month, StringType())
+    df = df.withColumn("month", get_only_month_udf(F.col("date_ym")))
+
+    df = df.groupBy(*["month"]).agg(
+        F.var_samp("single_per").alias("single_var"),
+        F.var_samp("couple_per").alias("couple_var"),
+        F.var_samp("group_per").alias("group_var"),
+        F.avg("single_per").alias("single_avg"),
+        F.avg("couple_per").alias("couple_avg"),
+        F.avg("group_per").alias("group_avg"),
+    )
+
+    # Compute standar deviation from variance
+    def compute_standar_deviation(variance):
+        return  math.sqrt(variance)
+    compute_standar_deviation_udf = F.udf(compute_standar_deviation, FloatType())
+
+    groups = [
+        {"name": "single", "ds_avg_ratio": 1}, 
+        {"name": "couple", "ds_avg_ratio": 0.2}, 
+        {"name": "group", "ds_avg_ratio": 0.2}, 
+        ]
+
+    for group_item in groups:
+        group = group_item["name"]
+        ds_avg_ratio = group_item["ds_avg_ratio"]
+        df = df.withColumn(f"{group}_ds", compute_standar_deviation_udf(F.col(f"{group}_var")))
+        df.select(*["month", f"{group}_ds", f"{group}_avg"]).where(F.col(f"{group}_ds") < ds_avg_ratio*F.col(f"{group}_avg")).orderBy(F.asc("month")).show()
     
 
     spark.stop()
