@@ -19,9 +19,6 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 all_channels = {
-    "presencial": [
-        "pasó y vio el letrero, nos buscó en booking y reservó",
-    ],
     "booking": [
         "booking.com", 
         "booking", 
@@ -31,24 +28,25 @@ all_channels = {
     "genius": [
         "booking/genius"
     ],
-    "facebook" : [
-        "facebook",
-        ],
     "walk_in" : [
+        "pasó y vio el letrero, nos buscó en booking y reservó",
         "walkin",
         "walking",
         "walk in",
         "walk - in",
         "walk in, instagram",
+        ],
+    "walk_in_luzma" : [
+        "walk in luzma",
+    ],
+    "walk_in_luzg" : [
         "walk in/ luz",
         "walk in /luz",
         "walk in luz",
-        "walk in luzma",
-        ],
-    "instagram" : [
-        "instagram",
-        ],
+    ],
     "redes_sociales": [
+        "instagram",
+        "facebook",
         "redes sociales", 
         "redes",
         "redes & booking",
@@ -58,34 +56,36 @@ all_channels = {
         "google",
         "google maps y green door",
         ],
-    "amigo" : [
-        "referido lilly",
-        "amigo mao",
-        "amigos",
-        "amigo", 
-        "amiga", 
-        "primo carlos", 
-        "familia carlitos",
-        ],
     "guaiti": [
         "referido guaiti",
     ],
     "referido" : [
+        "amigos",
+        "amigo", 
+        "amiga",
         "familia",
         "referido", 
         "referida", 
         "referidos",
         "referidas",
         "referido de otros húespedes",
-        "referida, cliente frecuente",
         "referido barichara",
+    ],
+    "referido" : [
+        "referido lilly",
+        "amigo mao",
+        "primo carlos", 
+        "familia carlitos",
+        "referida, cliente frecuente",
         "referido papa",
         "referido aleja hernandez",
         "referido mamá",
         "referidos polito",
-        "referidos evento",
         ],
-    "recurrente" : [
+    "evento": [
+        "referidos evento",
+    ],
+    "cliente_frecuente" : [
         "se habia hospedado antes", 
         'ya se había hospedado',
         "huesped frecuente",
@@ -104,9 +104,11 @@ all_channels = {
         "vaolo",
         "visita de vaolo",
     ],
-    "otros": [
-        "voluntarios",
+    "santander_weekend": [
         "santander weekend",
+    ],
+    "alianzas": [
+        "voluntarios",
         "staff",
         "parques naturales de colombia",
         "amigos del agua",
@@ -378,6 +380,12 @@ def explode_data():
 
     joined_data.show()
 
+    # Adjust booking income
+    # Booking ingreso restar 14% sobre eso aplicar el iva 19%
+    joined_data = joined_data.withColumn("price_sum_fix", F.when((F.col("channel_id") == "booking"), (1-0.14*(1+0.19))*F.col("price_sum")).otherwise(F.col("price_sum")))
+    joined_data = joined_data.drop(*["price_sum"])
+    joined_data = joined_data.withColumnRenamed("price_sum_fix", "price_sum")
+
     write_parquet("exploded", joined_data)
     
 def channel_analysis_2(custom_channels, focus_column, title, start_date="2020-09", end_date="2025-03"):
@@ -391,6 +399,7 @@ def channel_analysis_2(custom_channels, focus_column, title, start_date="2020-09
     df = df.groupBy(*["date_ym", "channel_id"]).agg(
         F.sum("count").alias("group_count"),
         F.sum("pax_avg").alias("pax_avg"),
+        F.sum("pax_sum").alias("pax_sum"),
         F.sum("price_sum").alias("price_sum"),
     )
 
